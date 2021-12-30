@@ -1,5 +1,5 @@
 # Function which returns subset or r length from n
-from itertools import combinations
+from itertools import combinations, permutations
 
 def rSubset(arr, r):
 
@@ -12,4 +12,6 @@ def rSubset(arr, r):
 if __name__ == "__main__":
 	arr = [i for i in range(10)]
 	r = 2
-	print (rSubset(arr, r))
+	#print (rSubset(arr, r))
+	z = list(permutations(range(10),10))
+	x =2
