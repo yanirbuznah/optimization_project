@@ -1,9 +1,10 @@
-
 import time
-from typing import Tuple, List
+from typing import List
+
+import matplotlib.pyplot as plt
 import numpy as np
 
-#np.random.seed(2)
+# np.random.seed(2)
 NUM_OF_TABLES = 50
 NUM_OF_PERSONS = 500
 array = np.random.randint(-5, 5, size=(NUM_OF_PERSONS, NUM_OF_PERSONS))
@@ -76,7 +77,7 @@ def heuristic1(tables: List[Table]):
     return tables
 
 
-def heuristic2(tables: List[Table], persons: List[Person], new_tables = False):
+def heuristic2(tables: List[Table], persons: List[Person], new_tables=False):
     while len(persons) != 0:
         min_tables = len(tables)
         chosen_person = None
@@ -100,45 +101,64 @@ def heuristic2(tables: List[Table], persons: List[Person], new_tables = False):
                 max_table = tables[-1]
                 print(f"Failed to find a good table for :{chosen_person.id} open new table, number: {len(tables)}")
             else:
-                print(f"Failed to find a good table for :{chosen_person.id}, seat in table:{max_table} with score: {max_score}")
+                print(
+                    f"Failed to find a good table for :{chosen_person.id}, seat in table:{max_table} with score: {max_score}")
         max_table.add_person(chosen_person.id)
         persons.remove(chosen_person)
     return tables
 
 
 if __name__ == '__main__':
-    h1,h2,h2f = [],[],[]
-    for _ in range(100):
-        NUM_OF_TABLES = 10
-        NUM_OF_PERSONS = 100
-        array = np.random.randint(-5, 5, size=(NUM_OF_PERSONS, NUM_OF_PERSONS))
-        relationship_matrix = (array + array.T)
-        np.fill_diagonal(relationship_matrix, 0)
-        tables = [Table() for x in range(NUM_OF_TABLES)]
-        persons = [Person(x) for x in range(NUM_OF_PERSONS)]
-        start = time.time()
-        heuristic1(tables)
-        score = (sum(t.score for t in tables))
-        h1.append(score)
-        print(f"heuristic1:{score}")
-        print(time.time() -start)
-        tables = [Table() for x in range(NUM_OF_TABLES)]
-        start= time.time()
-        heuristic2(tables,persons)
-        score = (sum(t.score for t in tables))
-        h2.append(score)
-        print(f"heuristic2:{score}")
-        print(time.time() -start)
-        tables = [Table() for x in range(NUM_OF_TABLES)]
-        persons = [Person(x) for x in range(NUM_OF_PERSONS)]
-        start= time.time()
-        heuristic2(tables,persons,new_tables=True)
+    h1, h2, h2f, bests = [], [], [], []
+    h1_avg, h2_avg, h2f_avg, bests_avg = [], [], [], []
+    num_of_tables = [5*(i+1) for i in range(20)]
+    for n_t in num_of_tables:
+        for _ in range(100):
+            NUM_OF_TABLES = n_t
+            NUM_OF_PERSONS = 10 * n_t
+            array = np.random.randint(-5, 6, size=(NUM_OF_PERSONS, NUM_OF_PERSONS))
+            relationship_matrix = (array + array.T)
+            np.fill_diagonal(relationship_matrix, 0)
+            bests.append(np.sum([np.max(relationship_matrix, axis=0)]) / n_t)
+            print(f"best:{bests[-1]}")
+            tables = [Table() for x in range(NUM_OF_TABLES)]
+            persons = [Person(x) for x in range(NUM_OF_PERSONS)]
+            start = time.time()
+            heuristic1(tables)
+            score = (sum(t.score for t in tables) / n_t)
+            h1.append(score)
+            print(f"heuristic1:{score}")
+            print(time.time() - start)
+            tables = [Table() for x in range(NUM_OF_TABLES)]
+            start = time.time()
+            heuristic2(tables, persons)
+            score = (sum(t.score for t in tables) / n_t)
+            h2.append(score)
+            print(f"heuristic2:{score}")
+            print(time.time() - start)
+            tables = [Table() for x in range(NUM_OF_TABLES)]
+            persons = [Person(x) for x in range(NUM_OF_PERSONS)]
+            start = time.time()
+            heuristic2(tables, persons, new_tables=True)
 
-        score = (sum(t.score for t in tables))
-        h2f.append(score)
-        print(f"heuristic2 with new tables:{score}")
-        print(f"Number of tables: {len(tables)}")
-        print(time.time() -start)
-    print(f"h1 avg:{np.average(h1)}")
-    print(f"h2 avg:{np.average(h2)}")
-    print(f"h2f avg:{np.average(h2f)}")
+            score = (sum(t.score for t in tables) / n_t)
+            h2f.append(score)
+            print(f"heuristic2 with new tables:{score}")
+            print(f"Number of tables: {len(tables)}")
+            print(time.time() - start)
+        h1_avg.append(np.average(h1))
+        h2_avg.append(np.average(h2))
+        h2f_avg.append(np.average(h2f))
+        bests_avg.append(np.average(bests))
+
+        print(f"h1 avg:{h1_avg[-1]}")
+        print(f"h2 avg:{h2_avg[-1]}")
+        print(f"h2f avg:{h2f_avg[-1]}")
+        print(f"best avg:{bests_avg[-1]}")
+    plt.plot(num_of_tables,bests_avg, label='best')
+    plt.plot(num_of_tables,h1_avg, label='h1')
+    plt.plot(num_of_tables,h2_avg,label='h2')
+    plt.plot(num_of_tables,h2f_avg,label='h2f')
+    plt.legend()
+    plt.savefig('plot.png')
+    plt.show()
