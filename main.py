@@ -67,7 +67,6 @@ def random_restart(available_tables: List[Table], persons):
     for p in persons:
         table = random.choice(available_tables)
         table.add_person(p)
-        p.seated = True
         if table.is_full():
             t = available_tables.pop(available_tables.index(table))
             fully_tables.append(t)
