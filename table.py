@@ -1,9 +1,11 @@
 import copy
 import random
+
 import util
 
+
 class Table:
-    def __init__(self, capacity=10,score= 0,table = None):
+    def __init__(self, capacity=10, score=0, table=None):
         self.score = score
         self.remaining_capacity = capacity
         if not table:
@@ -45,3 +47,11 @@ class Table:
     def score_after_exchange(self, current_id, other_id):
         return self.score - sum(util.relationship_matrix[current_id][self.table]) + sum(
             util.relationship_matrix[other_id][self.table]) - util.relationship_matrix[current_id][other_id]
+
+    def set_score(self):
+        x = 0
+        for i in self.table:
+            for j in self.table:
+                x += util.relationship_matrix[i][j]
+
+        self.score = x / 2

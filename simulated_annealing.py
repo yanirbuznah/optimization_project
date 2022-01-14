@@ -4,12 +4,13 @@ Simulated Annealing Class
 import copy
 import math
 import random
-
+import matplotlib.pyplot as plt
 
 class SimulatedAnnealing:
-    def __init__(self, initial_solution, solution_evaluator, initial_temp, final_temp, temp_reduction,
-                 not_improve_limit=10,
-                 iteration_per_temp=100, alpha=10, beta=5):
+    def __init__(self, initial_solution, solution_evaluator, initial_temp = 1, final_temp = 0.1,
+                 temp_reduction='geometric',
+                 not_improve_limit=200,
+                 iteration_per_temp=2000, alpha=0.1, beta=5):
         self.solution = initial_solution
         self.evaluate = solution_evaluator
         self.initial_temp = initial_temp
@@ -33,10 +34,11 @@ class SimulatedAnnealing:
         self.curr_temp -= self.alpha
 
     def geometric_temp_reduction(self):
-        self.curr_temp *= (1 / self.alpha)
+        #change from 1/alpha for compatibility with the linear reduction
+        self.curr_temp *= self.alpha
 
     def slow_decrease_temp_reduction(self):
-        self.curr_temp = self.curr_temp / (1 + self.beta * self.curr_temp)
+        self.curr_temp = self.curr_temp / (1 + self.alpha * self.curr_temp)
 
     def is_termination_criteria_met(self, not_improve):
         # can add more termination criteria
@@ -62,13 +64,13 @@ class SimulatedAnnealing:
     #         # decrement the temperature
     #         self.decrementRule()
 
-    def run(self):
+    def run(self,plot = True):
         tables = self.solution
         init_score = (sum(t.score for t in tables))
         best_score = init_score
         best_tables = copy.deepcopy(tables)
         not_improved = 0
-
+        scores = []
         while not self.is_termination_criteria_met(not_improved):
             for i in range(self.iteration_per_temp):
 
@@ -76,7 +78,12 @@ class SimulatedAnnealing:
                 p1 = t1.pick_random_person()
                 p2 = t2.pick_random_person()
                 delta = (t1.score_after_exchange(p1, p2) + t2.score_after_exchange(p2, p1)) - (t1.score + t2.score)
-                p = math.exp(delta / self.curr_temp)
+                current_score = (sum(t.score for t in tables)) + delta
+                scores.append(current_score / len(tables))
+                try:  # to avoid overflow
+                    p = math.exp(delta / self.curr_temp)
+                except:
+                    p = 2
                 if p > random.uniform(0, 1):
                     t1.remove_person(p1)
                     t2.remove_person(p2)
@@ -87,12 +94,17 @@ class SimulatedAnnealing:
                     not_improved = 0
                 else:
                     not_improved += 1
-                current_score = (sum(t.score for t in tables))
+
+
                 if best_score < current_score:
                     best_score = current_score
                     best_tables = copy.deepcopy(tables)
 
             self.decrement_rule()
 
-        final_score = (sum(t.score for t in tables))
+        if plot:
+            plt.plot(scores, label='h2f')
+            plt.title(f'SA for {len(tables)} tables')
+            plt.savefig(f'SA plots/SA for {len(tables)} tables')
+            plt.show()
         return copy.deepcopy(best_tables)

@@ -9,7 +9,7 @@ relationship_matrix = None
 
 def reset_matrix(num_of_persons):
     global relationship_matrix
-    array = np.random.randint(-5, 5, size=(num_of_persons, num_of_persons))
+    array = np.random.randint(-5, 6, size=(num_of_persons, num_of_persons))
     relationship_matrix = (array + array.T)
     np.fill_diagonal(relationship_matrix, 0)
     print(relationship_matrix)
