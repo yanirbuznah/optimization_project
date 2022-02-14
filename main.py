@@ -3,6 +3,7 @@ import math
 import random
 import time
 from typing import List
+import copy
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,9 +11,9 @@ import pandas as pd
 
 import util
 # np.random.seed(2)
+
 from simulated_annealing import SimulatedAnnealing
 from table import Table
-
 
 def heuristic1(tables: List[Table]):
     for p_id, p in enumerate(util.relationship_matrix):
@@ -61,6 +62,7 @@ def heuristic2(tables: List[Table], persons, new_tables=False):
         max_table.add_person(chosen_person)
         persons.remove(chosen_person)
     return tables
+
 
 
 def heuristic3(tables: List[Table]):
@@ -113,11 +115,13 @@ def heuristic4(tables: List[Table], persons, new_tables=False):
 
 
 def random_restart(available_tables: List[Table], persons):
+
     # unseated_persons = persons[:]
 
     fully_tables = []
     for p in persons:
         table = random.choice(available_tables)
+
         table.add_person(p)
         if table.is_full():
             t = available_tables.pop(available_tables.index(table))
@@ -128,6 +132,7 @@ def random_restart(available_tables: List[Table], persons):
 
 
 def simulated_annealing(tables: List[Table], persons, not_improve_limit=15, random_start=True):
+
     if random_start:
         tables = random_restart(tables, persons)
     init_score = (sum(t.score for t in tables))
@@ -159,6 +164,7 @@ def simulated_annealing(tables: List[Table], persons, not_improve_limit=15, rand
 
     final_score = (sum(t.score for t in tables))
     return copy.deepcopy(best_tables)
+
 
 
 """
@@ -409,6 +415,7 @@ def compare_approaches(reserve=0):
         for i in range(10):
             util.reset_matrix(num_of_persons)
             bests.append(np.sum(np.partition(util.relationship_matrix, -10, axis=0)[-10:]) / (2 * n_t))
+
             print(f"best:{bests[-1]}")
 
             tables = [Table() for _ in range(num_of_tables)]
@@ -428,6 +435,7 @@ def compare_approaches(reserve=0):
             score = (sum(t.score for t in tables) / n_t)
             h2.append(score)
             print(f"heuristic2:{score}")
+
             t = time.time() - start
             h2t.append(t)
             print(t)
@@ -542,9 +550,11 @@ def compare_approaches(reserve=0):
     plt.plot(n_tables, h4f_avg, '-o', label='h4f')
     plt.plot(n_tables, sa_avg, '-o', label='simulated annealing')
     plt.title("Scores")
+
     plt.legend()
     plt.savefig('scores.png')
     plt.show()
+
 
     plt.plot(n_tables, h1_avgt, '-o', label='h1')
     plt.plot(n_tables, h2_avgt, '-o', label='h2')
