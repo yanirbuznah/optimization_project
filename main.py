@@ -1,3 +1,4 @@
+import copy
 import math
 import random
 import time
@@ -6,118 +7,46 @@ import copy
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
+import util
 # np.random.seed(2)
-NUM_OF_TABLES = 50
-NUM_OF_PERSONS = 500
-array = np.random.randint(-5, 5, size=(NUM_OF_PERSONS, NUM_OF_PERSONS))
-relationship_matrix = (array + array.T)
-np.fill_diagonal(relationship_matrix, 0)
-print(relationship_matrix)
 
-
-class Table:
-    def __init__(self, capacity=10,score= 0,table = None):
-        self.score = score
-        self.remaining_capacity = capacity
-        if not table:
-            self.table = []
-        else:
-            self.table = table[:]
-
-    def add_person(self, id):
-        if self.remaining_capacity <= 0:
-            raise "Table is full"
-        self.table.append(id)
-        self.remaining_capacity -= 1
-        self.score += self.get_score_with_person(id)
-
-    def get_score_with_person(self, id):
-        if len(self.table) == 0:
-            return 0
-        return sum(relationship_matrix[id][self.table])
-
-    def get_score_without_specific_person(self, id):
-        if len(self.table) == 0:
-            return 0
-        return self.score - sum(relationship_matrix[id][self.table])
-
-    def __str__(self):
-        return self.table.__str__()
-
-    def is_full(self):
-        return self.remaining_capacity == 0
-
-    def remove_person(self, id):
-        self.table.remove(id)
-        self.remaining_capacity += 1
-        self.score -= self.get_score_with_person(id)
-
-    def pick_random_person(self):
-        return random.choice(self.table)
-
-    def score_after_exchange(self, current_id, other_id):
-        return self.score - sum(relationship_matrix[current_id][self.table]) + sum(
-            relationship_matrix[other_id][self.table]) - relationship_matrix[current_id][other_id]
-    #
-    # def __copy__(self):
-    #     return Table(capacity=self.remaining_capacity, score=self.score, table=self.table[:])
-
-
-class Person:
-    def __init__(self, id):
-        self.current_table = None
-        self.seated = False
-        self.id = id
-        # self.evaluations = []
-
-    def is_seated(self):
-        return self.seated
-
-    def seat_on_table(self, table):
-        self.available_tables -= self.available_tables
-        self.seated = True
-        self.current_table = table
-
-    def available_tables(self, tables: List[Table]):
-        available_tables = 0
-        for t in tables:
-            if t.is_full():
-                continue
-            available_tables += int(t.get_score_with_person(self.id) - t.score >= 0)
-        return available_tables
-
+from simulated_annealing import SimulatedAnnealing
+from table import Table
 
 def heuristic1(tables: List[Table]):
-    for id, p in enumerate(relationship_matrix):
-        max_score = -100
+    for p_id, p in enumerate(util.relationship_matrix):
+        max_score = -float('inf')
         max_table = None
         for i, table in enumerate(tables):
             if table.is_full():
                 continue
-            score = table.get_score_with_person(id)
+            score = table.get_score_with_person(p_id)
             if score > max_score:
                 max_score = score
                 max_table = table
-        max_table.add_person(id)
+        max_table.add_person(p_id)
     return tables
 
 
-def heuristic2(tables: List[Table], persons: List[Person], new_tables=False):
+def heuristic2(tables: List[Table], persons, new_tables=False):
+    w_color = '\033[91m'
+    end_color = '\033[0m'
     while len(persons) != 0:
         min_tables = len(tables)
         chosen_person = None
         for p in persons:
-            p_avaialble = p.available_tables(tables)
-            if p_avaialble < min_tables or chosen_person is None:
-                min_tables = p_avaialble
+            p_available = util.available_tables_for_person(tables, p)
+            if p_available < min_tables or chosen_person is None:
+                min_tables = p_available
                 chosen_person = p
-        max_score = -10000
+        max_score = -float('inf')
         max_table = None
         for i, table in enumerate(tables):
             if table.is_full():
                 continue
-            score = table.get_score_with_person(chosen_person.id)
+            score = table.get_score_with_person(chosen_person)
             if score > max_score:
                 max_score = score
                 max_table = table
@@ -125,30 +54,85 @@ def heuristic2(tables: List[Table], persons: List[Person], new_tables=False):
             if new_tables:
                 tables.append(Table())
                 max_table = tables[-1]
-                print(f"Failed to find a good table for :{chosen_person.id} open new table, number: {len(tables)}")
+                print(
+                    f"{w_color}Failed to find a good table for :{chosen_person} open new table, number: {len(tables)}{end_color}")
             else:
                 print(
-                    f"Failed to find a good table for :{chosen_person.id}, seat in table:{max_table} with score: {max_score}")
-        max_table.add_person(chosen_person.id)
+                    f"{w_color}Failed to find a good table for :{chosen_person}, seat in table:{max_table} with score: {max_score}{end_color}")
+        max_table.add_person(chosen_person)
         persons.remove(chosen_person)
     return tables
 
 
-def random_restart(available_tables: List[Table], persons: List[Person]):
+
+def heuristic3(tables: List[Table]):
+    for p_id, p in enumerate(util.relationship_matrix):
+        max_score = -float('inf')
+        max_table = None
+        for i, table in enumerate(tables):
+            if table.is_full():
+                continue
+            score = table.get_score_with_person(p_id) - table.score
+            if score > max_score:
+                max_score = score
+                max_table = table
+        max_table.add_person(p_id)
+    return tables
+
+
+def heuristic4(tables: List[Table], persons, new_tables=False):
+    w_color = '\033[91m'
+    end_color = '\033[0m'
+    while len(persons) != 0:
+        min_tables = len(tables)
+        chosen_person = None
+        for p in persons:
+            p_available = util.available_tables_for_person(tables, p)
+            if p_available < min_tables or chosen_person is None:
+                min_tables = p_available
+                chosen_person = p
+        max_score = -float('inf')
+        max_table = None
+        for i, table in enumerate(tables):
+            if table.is_full():
+                continue
+            score = table.get_score_with_person(chosen_person) - table.score
+            if score > max_score:
+                max_score = score
+                max_table = table
+        if max_score < 0:
+            if new_tables:
+                tables.append(Table())
+                max_table = tables[-1]
+                print(
+                    f"{w_color}Failed to find a good table for :{chosen_person} open new table, number: {len(tables)}{end_color}")
+            else:
+                print(
+                    f"{w_color}Failed to find a good table for :{chosen_person}, seat in table:{max_table} with score: {max_score}{end_color}")
+        max_table.add_person(chosen_person)
+        persons.remove(chosen_person)
+    return tables
+
+
+def random_restart(available_tables: List[Table], persons):
+
     # unseated_persons = persons[:]
 
     fully_tables = []
     for p in persons:
         table = random.choice(available_tables)
-        table.add_person(p.id)
-        p.seated = True
+
+        table.add_person(p)
         if table.is_full():
             t = available_tables.pop(available_tables.index(table))
             fully_tables.append(t)
+    for t in available_tables:
+        fully_tables.append(t)
     return fully_tables
 
 
-def simulated_annealing(tables: List[Table], persons: List[Person], not_improve_limit = 15,random_start = True):
+def simulated_annealing(tables: List[Table], persons, not_improve_limit=15, random_start=True):
+
     if random_start:
         tables = random_restart(tables, persons)
     init_score = (sum(t.score for t in tables))
@@ -182,76 +166,612 @@ def simulated_annealing(tables: List[Table], persons: List[Person], not_improve_
     return copy.deepcopy(best_tables)
 
 
-def main():
-    global NUM_OF_TABLES, NUM_OF_PERSONS, array, relationship_matrix
-    sa,h1, h2, h2f, bests = [], [], [], [], []
-    sa_avg, h1_avg, h2_avg, h2f_avg, bests_avg = [], [], [], [], []
-    num_of_tables = [10] #[5 * (i + 1) for i in range(20)]
-    for n_t in num_of_tables:
-        for _ in range(100):
-            NUM_OF_TABLES = n_t
-            NUM_OF_PERSONS = 10 * n_t
-            array = np.random.randint(-5, 6, size=(NUM_OF_PERSONS, NUM_OF_PERSONS))
-            relationship_matrix = (array + array.T)
-            np.fill_diagonal(relationship_matrix, 0)
-            bests.append(np.sum([np.max(relationship_matrix, axis=0)]) / n_t)
+
+"""
+compare between h3 h4 and SA and h3,h4 followed by SA 
+"""
+
+
+def combine_approaches():
+    sa_avg, h3_avg, h4_avg, h3_sa_avg, h4_sa_avg = [], [], [], [], []
+    sa_avgt, h3_avgt, h4_avgt, h3_sa_avgt, h4_sa_avgt = [], [], [], [], []
+    n_tables = [5 * (i + 1) for i in range(20)]
+    for n_t in n_tables:
+        num_of_tables = n_t
+        num_of_persons = num_of_tables * 10
+        sa, h3, h4, h3_sa, h4_sa = [], [], [], [], [],
+        sat, h3t, h4t, h3_sat, h4_sat = [], [], [], [], []
+        for i in range(10):
+            util.reset_matrix(num_of_persons)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = heuristic3(tables)
+            score = (sum(t.score for t in tables) / n_t)
+            h3.append(score)
+            print(f"heuristic3:{score}")
+            t = time.time() - start
+            h3t.append(t)
+            print(t)
+
+            start = time.time()
+            sim_ann = SimulatedAnnealing(tables, None, initial_temp=1, alpha=0.01, iteration_per_temp=4000,
+                                         not_improve_limit=400, temp_reduction='slowDecrease')
+            tables = sim_ann.run(plot=False)
+            score = (sum(t.score for t in tables) / n_t)
+            h3_sa.append(score)
+            print(f"simulated annealing after h3:{score}")
+            t = time.time() - start
+            h3_sat.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = heuristic4(tables, persons)
+            score = (sum(t.score for t in tables) / n_t)
+            h4.append(score)
+            print(f"heuristic4:{score}")
+            t = time.time() - start
+            h4t.append(t)
+            print(t)
+
+            start = time.time()
+            sim_ann = SimulatedAnnealing(tables, None, initial_temp=1, alpha=0.01,
+                                         iteration_per_temp=num_of_persons * 10,
+                                         not_improve_limit=num_of_tables * 10, temp_reduction='slowDecrease')
+            tables = sim_ann.run(plot=False)
+            score = (sum(t.score for t in tables) / n_t)
+            h4_sa.append(score)
+            print(f"simulated annealing after h4:{score}")
+            t = time.time() - start
+            h4_sat.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = random_restart(tables, persons)
+            sim_ann = SimulatedAnnealing(tables, None, initial_temp=1, alpha=0.01,
+                                         iteration_per_temp=num_of_persons * 10,
+                                         not_improve_limit=num_of_tables * 10, temp_reduction='slowDecrease')
+            if i % 10 == 0:
+                tables = sim_ann.run(plot=True)
+            else:
+                tables = sim_ann.run(plot=False)
+            score = (sum(t.score for t in tables) / n_t)
+            sa.append(score)
+            print(f"simulated annealing:{score}")
+            t = time.time() - start
+            sat.append(t)
+            print(t)
+
+        sa_avg.append(np.average(sa))
+        h3_avg.append(np.average(h3))
+        h3_sa_avg.append(np.average(h3_sa))
+        h4_avg.append(np.average(h4))
+        h4_sa_avg.append(np.average(h4_sa))
+
+        sa_avgt.append(np.average(sat))
+        h3_avgt.append(np.average(h3t))
+        h3_sa_avgt.append(np.average(h3_sat))
+        h4_avgt.append(np.average(h4t))
+        h4_sa_avgt.append(np.average(h4_sat))
+
+        print(f"h3 avg:{h3_avg[-1]}")
+        print(f"h4 avg:{h4_avg[-1]}")
+        print(f"simulated annealing avg:{sa_avg[-1]}")
+        print(f"simulated annealing avg after h3:{h3_sa_avg[-1]}")
+        print(f"simulated annealing avg after h4:{h4_sa_avg[-1]}")
+
+        print(f"h3 avg time:{h3_avgt[-1]}")
+        print(f"h4 avg time:{h4_avgt[-1]}")
+        print(f"simulated annealing avg time:{sa_avgt[-1]}")
+        print(f"simulated annealing avg time after h3:{h3_sa_avgt[-1]}")
+        print(f"simulated annealing avg time after h4:{h4_sa_avgt[-1]}")
+
+    # plt.plot(n_tables, bests_avg, label='top 3 4000-400')
+
+    plt.plot(n_tables, h3_avg, '-', label='h3')
+    plt.plot(n_tables, h4_avg, '-', label='h4')
+    plt.plot(n_tables, sa_avg, '-', label='SA')
+    plt.plot(n_tables, h3_sa_avg, '-', label='SA & h3')
+    plt.plot(n_tables, h4_sa_avg, '-', label='SA & h4')
+    plt.title("Scores")
+    plt.legend()
+    plt.savefig('scores.png')
+    plt.show()
+
+    plt.plot(n_tables, h3_avgt, '-', label='h3')
+    plt.plot(n_tables, h4_avgt, '-', label='h4')
+    plt.plot(n_tables, sa_avgt, '-', label='SA')
+    plt.plot(n_tables, h3_sa_avgt, '-', label='SA & h3')
+    plt.plot(n_tables, h4_sa_avgt, '-', label='SA & h4')
+    plt.title('Time')
+    plt.legend()
+    plt.savefig('times.png')
+    plt.show()
+
+
+"""
+compare between h3 h4 and SA with 4000 iterations per temperature and 400 iterations without improvement. 
+"""
+
+
+def compare_top3_approaches(reserve=0, iteration_factor=20):
+    sa_avg, h3_avg, h4_avg = [], [], []
+    sa_avgt, h3_avgt, h4_avgt = [], [], []
+    n_tables = [5 * (i + 1) for i in range(20)]
+    additional_tables = 0
+    for n_t in n_tables:
+        additional_tables += reserve
+        num_of_tables = n_t + additional_tables
+        num_of_persons = n_t * 10
+        sa, h3, h4 = [], [], [],
+        sat, h3t, h4t = [], [], []
+        for i in range(10):
+            util.reset_matrix(num_of_persons)
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = heuristic3(tables)
+            tables = [t for t in tables if t.remaining_capacity != 10]
+            print(f"#tables:{len(tables)}")
+            score = (sum(t.score for t in tables) / len(tables))
+            h3.append(score)
+            print(f"heuristic3:{score}")
+            t = time.time() - start
+            h3t.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = heuristic4(tables, persons)
+            tables = [t for t in tables if t.remaining_capacity != 10]
+            print(f"#tables:{len(tables)}")
+            score = (sum(t.score for t in tables) / len(tables))
+            h4.append(score)
+            print(f"heuristic4:{score}")
+            t = time.time() - start
+            h4t.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = random_restart(tables, persons)
+            sim_ann = SimulatedAnnealing(tables, None, initial_temp=1, alpha=0.01,
+                                         iteration_per_temp=num_of_persons * iteration_factor,
+                                         not_improve_limit=num_of_tables * iteration_factor,
+                                         temp_reduction='slowDecrease')
+            if i % 10 == 0:
+                tables = sim_ann.run(plot=True)
+            else:
+                tables = sim_ann.run(plot=False)
+            tables = [t for t in tables if t.remaining_capacity != 10]
+            print(f"#tables:{len(tables)}")
+            score = (sum(t.score for t in tables) / len(tables))
+            sa.append(score)
+            print(f"simulated annealing:{score}")
+            t = time.time() - start
+            sat.append(t)
+            print(t)
+
+        sa_avg.append(np.average(sa))
+        h3_avg.append(np.average(h3))
+        h4_avg.append(np.average(h4))
+
+        sa_avgt.append(np.average(sat))
+        h3_avgt.append(np.average(h3t))
+        h4_avgt.append(np.average(h4t))
+
+        print(f"h3 avg:{h3_avg[-1]}")
+        print(f"h4 avg:{h4_avg[-1]}")
+        print(f"simulated annealing avg:{sa_avg[-1]}")
+
+        print(f"h3 avg time:{h3_avgt[-1]}")
+        print(f"h4 avg time:{h4_avgt[-1]}")
+        print(f"simulated annealing avg time:{sa_avgt[-1]}")
+
+    # plt.plot(n_tables, bests_avg, label='top 3 4000-400')
+
+    plt.plot(n_tables, h3_avg, '-o', label='h3')
+    plt.plot(n_tables, h4_avg, '-o', label='h4')
+    plt.plot(n_tables, sa_avg, '-o', label='simulated annealing')
+    plt.title("Scores")
+    plt.legend()
+    plt.savefig('scores.png')
+    plt.show()
+
+    plt.plot(n_tables, h3_avgt, '-o', label='h3')
+    plt.plot(n_tables, h4_avgt, '-o', label='h4')
+    plt.plot(n_tables, sa_avgt, '-o', label='simulated annealing')
+    plt.title('Time')
+    plt.legend()
+    plt.savefig('times.png')
+    plt.show()
+
+
+"""
+plots generator for the report 
+"""
+
+
+def compare_approaches(reserve=0):
+    sa_avg, h1_avg, h2_avg, h2f_avg, bests_avg, h3_avg, h4_avg, h4f_avg = [], [], [], [], [], [], [], []
+    sa_avgt, h1_avgt, h2_avgt, h2f_avgt, h3_avgt, h4_avgt, h4f_avgt = [], [], [], [], [], [], []
+    tables_2f_avg, tables_4f_avg = [], []
+    n_tables = [5 * (i + 1) for i in range(20)]
+    additional_tables = 0
+    for n_t in n_tables:
+        additional_tables += reserve
+        num_of_tables = n_t + additional_tables
+        num_of_persons = n_t * 10
+        sa, h1, h2, h2f, bests, h3, h4, h4f = [], [], [], [], [], [], [], []
+        sat, h1t, h2t, h2ft, h3t, h4t, h4ft = [], [], [], [], [], [], []
+        tables_2f, tables_4f = [], []
+        for i in range(10):
+            util.reset_matrix(num_of_persons)
+            bests.append(np.sum(np.partition(util.relationship_matrix, -10, axis=0)[-10:]) / (2 * n_t))
+
             print(f"best:{bests[-1]}")
-            tables = [Table() for x in range(NUM_OF_TABLES)]
-            persons = [Person(x) for x in range(NUM_OF_PERSONS)]
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
             start = time.time()
             tables = heuristic1(tables)
             score = (sum(t.score for t in tables) / n_t)
             h1.append(score)
             print(f"heuristic1:{score}")
-            print(time.time() - start)
-            tables = [Table() for x in range(NUM_OF_TABLES)]
+            t = time.time() - start
+            h1t.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
             start = time.time()
             tables = heuristic2(tables, persons)
             score = (sum(t.score for t in tables) / n_t)
             h2.append(score)
             print(f"heuristic2:{score}")
-            print(time.time() - start)
-            tables = [Table() for x in range(NUM_OF_TABLES)]
-            persons = [Person(x) for x in range(NUM_OF_PERSONS)]
+
+            t = time.time() - start
+            h2t.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
             start = time.time()
             tables = heuristic2(tables, persons, new_tables=True)
             score = (sum(t.score for t in tables) / n_t)
             h2f.append(score)
             print(f"heuristic2 with new tables:{score}")
             print(f"Number of tables: {len(tables)}")
-            print(time.time() - start)
-            #tables = [Table() for x in range(NUM_OF_TABLES)]
-            #persons = [Person(x) for x in range(NUM_OF_PERSONS)]
+            tables_2f.append(len(tables))
+            t = time.time() - start
+            h2ft.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
             start = time.time()
-            tables = simulated_annealing(tables, persons,random_start=False,not_improve_limit=20)
+            tables = heuristic3(tables)
+            score = (sum(t.score for t in tables) / n_t)
+            h3.append(score)
+            print(f"heuristic3:{score}")
+            t = time.time() - start
+            h3t.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = heuristic4(tables, persons)
+            score = (sum(t.score for t in tables) / n_t)
+            h4.append(score)
+            print(f"heuristic4:{score}")
+            t = time.time() - start
+            h4t.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = heuristic4(tables, persons, new_tables=True)
+            score = (sum(t.score for t in tables) / n_t)
+            h4f.append(score)
+            print(f"heuristic2 with new tables:{score}")
+            print(f"Number of tables: {len(tables)}")
+            tables_4f.append(len(tables))
+            t = time.time() - start
+            h4ft.append(t)
+            print(t)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = random_restart(tables, persons)
+            sim_ann = SimulatedAnnealing(tables, None, initial_temp=1, alpha=0.01, temp_reduction='slowDecrease')
+            if i % 10 == 0:
+                tables = sim_ann.run(plot=True)
+            else:
+                tables = sim_ann.run(plot=False)
             score = (sum(t.score for t in tables) / n_t)
             sa.append(score)
             print(f"simulated annealing:{score}")
-            print(time.time() - start)
+            t = time.time() - start
+            sat.append(t)
+            print(t)
 
         sa_avg.append(np.average(sa))
         h1_avg.append(np.average(h1))
         h2_avg.append(np.average(h2))
         h2f_avg.append(np.average(h2f))
+        h3_avg.append(np.average(h3))
+        h4_avg.append(np.average(h4))
+        h4f_avg.append(np.average(h4f))
         bests_avg.append(np.average(bests))
+
+        sa_avgt.append(np.average(sat))
+        h1_avgt.append(np.average(h1t))
+        h2_avgt.append(np.average(h2t))
+        h2f_avgt.append(np.average(h2ft))
+        h3_avgt.append(np.average(h3t))
+        h4_avgt.append(np.average(h4t))
+        h4f_avgt.append(np.average(h4ft))
+
+        tables_2f_avg.append(np.average(tables_2f))
+        tables_4f_avg.append(np.average(tables_4f))
 
         print(f"h1 avg:{h1_avg[-1]}")
         print(f"h2 avg:{h2_avg[-1]}")
         print(f"h2f avg:{h2f_avg[-1]}")
+        print(f"h3 avg:{h3_avg[-1]}")
+        print(f"h4 avg:{h4_avg[-1]}")
+        print(f"h4f avg:{h4f_avg[-1]}")
         print(f"simulated annealing avg:{sa_avg[-1]}")
         print(f"best avg:{bests_avg[-1]}")
-    plt.plot(num_of_tables, bests_avg, label='best')
-    plt.plot(num_of_tables, h1_avg, label='h1')
-    plt.plot(num_of_tables, h2_avg, label='h2')
-    plt.plot(num_of_tables, h2f_avg, label='h2f')
-    plt.plot(num_of_tables, sa_avg, label='simulated annealing')
+
+        print(f"h1 avg time:{h1_avgt[-1]}")
+        print(f"h2 avg time:{h2_avgt[-1]}")
+        print(f"h2f avg time:{h2f_avgt[-1]}")
+        print(f"h3 avg time:{h3_avgt[-1]}")
+        print(f"h4 avg time:{h4_avgt[-1]}")
+        print(f"h4f avg time:{h4f_avgt[-1]}")
+        print(f"simulated annealing avg time:{sa_avgt[-1]}")
+
+    # plt.plot(n_tables, bests_avg, label='top 3 4000-400')
+    plt.plot(n_tables, h1_avg, '-o', label='h1')
+    plt.plot(n_tables, h2_avg, '-o', label='h2')
+    plt.plot(n_tables, h2f_avg, '-o', label='h2f')
+    plt.plot(n_tables, h3_avg, '-o', label='h3')
+    plt.plot(n_tables, h4_avg, '-o', label='h4')
+    plt.plot(n_tables, h4f_avg, '-o', label='h4f')
+    plt.plot(n_tables, sa_avg, '-o', label='simulated annealing')
+    plt.title("Scores")
+
     plt.legend()
-    plt.savefig('plot.png')
+    plt.savefig('scores.png')
     plt.show()
 
 
+    plt.plot(n_tables, h1_avgt, '-o', label='h1')
+    plt.plot(n_tables, h2_avgt, '-o', label='h2')
+    plt.plot(n_tables, h2f_avgt, '-o', label='h2f')
+    plt.plot(n_tables, h3_avgt, '-o', label='h3')
+    plt.plot(n_tables, h4_avgt, '-o', label='h4')
+    plt.plot(n_tables, h4f_avgt, '-o', label='h4f')
+    plt.plot(n_tables, sa_avgt, '-o', label='simulated annealing')
+    plt.title('Time')
+    plt.legend()
+    plt.savefig('times.png')
+    plt.show()
+
+    plt.plot(n_tables, tables_2f_avg, '-o', label='h2f')
+    plt.plot(n_tables, tables_4f_avg, '-o', label='h4f')
+    plt.title('Num of tables')
+    plt.legend()
+    plt.savefig('num of tables.png')
+    plt.show()
+
+
+"""
+for excel sheets of the SA algorithm
+simulated annealing tuning parameters and write to excel files the results
+"""
+
+
+def simulated_annealing_tuning_parameters():
+    n_tables = [5 * (i + 1) for i in range(20)]
+    temps = [0.1 * (i + 1) for i in range(10)]
+    alphas = [0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01]
+    for k in [2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        df_list = {'l': [], 's': [], 'g': []}
+        for num_of_tables in n_tables:
+            d_linear = pd.DataFrame(0, index=temps, columns=alphas)
+            d_linear.index.name = 'temperature'
+            d_linear.columns.name = 'alpha'
+            d_geometric = pd.DataFrame(0, index=temps, columns=alphas)
+            d_geometric.index.name = 'temperature'
+            d_geometric.columns.name = 'alpha'
+            d_slow_decrease = pd.DataFrame(0, index=temps, columns=alphas)
+            d_slow_decrease.index.name = 'temperature'
+            d_slow_decrease.columns.name = 'alpha'
+
+            num_of_persons = num_of_tables * 10
+            for t in temps:
+                for a in alphas:
+                    l_scores, s_scores, g_scores = [], [], []
+                    for _ in range(5):
+                        util.reset_matrix(num_of_persons)
+                        tables = [Table() for _ in range(num_of_tables)]
+                        persons = [x for x in range(num_of_persons)]
+                        tables = random_restart(tables, persons)
+                        sim_ann = SimulatedAnnealing(tables, None, t, alpha=a, temp_reduction='linear',
+                                                     boltzmann_constant=k)
+                        tables = sim_ann.run()
+                        score = (sum(t.score for t in tables) / num_of_tables)
+                        print(f"n_t:{num_of_tables} t:{t}, alpha:{a} {score}")
+                        l_scores.append(score)
+                        tables = [Table() for _ in range(num_of_tables)]
+                        persons = [x for x in range(num_of_persons)]
+                        tables = random_restart(tables, persons)
+                        sim_ann = SimulatedAnnealing(tables, None, t, alpha=a, temp_reduction='geometric',
+                                                     boltzmann_constant=k)
+                        tables = sim_ann.run()
+                        score = (sum(t.score for t in tables) / num_of_tables)
+                        print(f"n_t:{num_of_tables} t:{t}, alpha:{a} {score}")
+                        g_scores.append(score)
+                        tables = [Table() for _ in range(num_of_tables)]
+                        persons = [x for x in range(num_of_persons)]
+                        tables = random_restart(tables, persons)
+                        sim_ann = SimulatedAnnealing(tables, None, t, alpha=a, temp_reduction='slowDecrease',
+                                                     boltzmann_constant=k)
+                        tables = sim_ann.run()
+                        score = (sum(t.score for t in tables) / num_of_tables)
+                        print(f"n_t:{num_of_tables} t:{t}, alpha:{a} {score}")
+                        s_scores.append(score)
+                    l_avg = np.average(l_scores)
+                    g_avg = np.average(g_scores)
+                    s_avg = np.average(s_scores)
+                    d_linear.loc[t, a] = round(l_avg, 2)
+                    d_geometric.loc[t, a] = round(g_avg, 2)
+                    d_slow_decrease.loc[t, a] = round(s_avg, 2)
+            df_list['l'].append(d_linear.copy(True))
+            df_list['s'].append(d_slow_decrease.copy(True))
+            df_list['g'].append(d_geometric.copy(True))
+
+        writer = pd.ExcelWriter(f'linear{k}.xlsx')
+        linear = df_list['l']
+        for i, df in enumerate(linear):
+            df.to_excel(writer, f'sheet{n_tables[i]}')
+        writer.save()
+        writer = pd.ExcelWriter(f'geometric{k}.xlsx')
+        geometric = df_list['g']
+        for i, df in enumerate(geometric):
+            df.to_excel(writer, f'sheet{n_tables[i]}')
+        writer.save()
+        writer = pd.ExcelWriter(f'slowDecrease{k}.xlsx')
+        slow_decrease = df_list['s']
+        for i, df in enumerate(slow_decrease):
+            df.to_excel(writer, f'sheet{n_tables[i]}')
+        writer.save()
+
+"""
+comapre normal sa and sa with missing data, when the sa with missing data get only top k guests for every guest.
+"""
+def sa_with_missing_data(reserve=0, iteration_factor=20,k=5):
+    sa_avg, sa_missing_data_avg=  [], []
+    sa_avgt, sa_missing_data_avgt,  =  [], []
+    n_tables = [5 * (i + 1) for i in range(20)]
+    additional_tables = 0
+    for n_t in n_tables:
+        additional_tables += reserve
+        num_of_tables = n_t + additional_tables
+        num_of_persons = n_t * 10
+        sa, sa_m_d= [], [],
+        sat, sa_m_dt= [], []
+        for i in range(10):
+            util.reset_matrix(num_of_persons)
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            start = time.time()
+            tables = random_restart(tables, persons)
+            sim_ann = SimulatedAnnealing(tables, None, initial_temp=1, alpha=0.01,
+                                         iteration_per_temp=num_of_persons * iteration_factor,
+                                         not_improve_limit=num_of_tables * iteration_factor,
+                                         temp_reduction='slowDecrease')
+            if i % 10 == 0:
+                tables = sim_ann.run(plot=True)
+            else:
+                tables = sim_ann.run(plot=False)
+
+            tables = [t for t in tables if t.remaining_capacity != 10]
+
+            print(f"#tables:{len(tables)}")
+            score = (sum(t.score for t in tables) / len(tables))
+            (t.set_score() for t in tables)
+            if score != (sum(t.score for t in tables) / len(tables)):
+                x =4
+            sa.append(score)
+            print(f"simulated annealing:{score}")
+            t = time.time() - start
+            sat.append(t)
+            print(t)
+
+
+            tables = [Table() for _ in range(num_of_tables)]
+            persons = [x for x in range(num_of_persons)]
+            util.sparse_matrix(k)
+            start = time.time()
+            tables = random_restart(tables, persons)
+            sim_ann = SimulatedAnnealing(tables, None, initial_temp=1, alpha=0.01,
+                                         iteration_per_temp=num_of_persons * iteration_factor,
+                                         not_improve_limit=num_of_tables * iteration_factor,
+                                         temp_reduction='slowDecrease')
+            tables = sim_ann.run(plot=False)
+            tables = [t for t in tables if t.remaining_capacity != 10]
+            print(f"#tables:{len(tables)}")
+            util.normal_matrix()
+            score = (sum(t.set_and_get_score() for t in tables) / len(tables))
+            sa_m_d.append(score)
+            print(f"simulated annealing with missing data:{score}")
+            t = time.time() - start
+            sa_m_dt.append(t)
+            print(t)
+
+
+
+        sa_avg.append(np.average(sa))
+        sa_missing_data_avg.append(np.average(sa_m_d))
+
+
+        sa_avgt.append(np.average(sat))
+        sa_missing_data_avgt.append(np.average(sa_m_dt))
+
+
+
+        print(f"simulated annealing avg:{sa_avg[-1]}")
+        print(f"simulated annealing with missing data avg:{sa_missing_data_avg[-1]}")
+
+        print(f"simulated annealing avg time:{sa_avgt[-1]}")
+        print(f"simulated annealing with missing data avg time:{sa_missing_data_avgt[-1]}")
+
+    # plt.plot(n_tables, bests_avg, label='top 3 4000-400')
+
+
+    plt.plot(n_tables, sa_avg, '-o', label='simulated annealing')
+    plt.plot(n_tables, sa_missing_data_avg, '-o', label= f'missing data SA k= {k}')
+    plt.title("Scores")
+    plt.legend()
+    plt.savefig('scores.png')
+    plt.show()
+
+    plt.plot(n_tables, sa_missing_data_avgt, '-o', label= f'missing data SA k= {k}')
+    plt.plot(n_tables, sa_avgt, '-o', label='SA')
+    plt.title('Time')
+    plt.legend()
+    plt.savefig('times.png')
+    plt.show()
+
+
+
+
 if __name__ == '__main__':
-    # tables = [Table() for x in range(NUM_OF_TABLES)]
-    # persons = [Person(x) for x in range(NUM_OF_PERSONS)]
-    # tables = simulated_annealing(tables, persons,not_improve_limit = 15)
-    main()
+    simulated_annealing_tuning_parameters()
+    #
+    # combine_approaches()
+    #
+    #compare_top3_approaches(1)
+    #
+    # combine_approaches()
+    #
+    # sa_with_missing_data(k=5)
+    # sa_with_missing_data(k=10)
