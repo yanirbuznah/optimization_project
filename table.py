@@ -48,10 +48,11 @@ class Table:
         return self.score - sum(util.relationship_matrix[current_id][self.table]) + sum(
             util.relationship_matrix[other_id][self.table]) - util.relationship_matrix[current_id][other_id]
 
-    def set_score(self):
+    def set_and_get_score(self):
         x = 0
         for i in self.table:
             for j in self.table:
                 x += util.relationship_matrix[i][j]
 
         self.score = x / 2
+        return self.score

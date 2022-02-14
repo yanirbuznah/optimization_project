@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 class SimulatedAnnealing:
     def __init__(self, initial_solution, solution_evaluator, initial_temp = 1, final_temp = 0.1,
                  temp_reduction='geometric',
-                 not_improve_limit=200,
-                 iteration_per_temp=2000, alpha=0.1, beta=5):
+                 not_improve_limit=100,
+                 iteration_per_temp=1000, alpha=0.1, boltzmann_constant=1):
         self.solution = initial_solution
         self.evaluate = solution_evaluator
         self.initial_temp = initial_temp
@@ -18,7 +18,7 @@ class SimulatedAnnealing:
         self.final_temp = final_temp
         self.iteration_per_temp = iteration_per_temp
         self.alpha = alpha
-        self.beta = beta
+        self.k = boltzmann_constant
         self.not_improve_limit = not_improve_limit
 
         if temp_reduction == "linear":
@@ -64,7 +64,7 @@ class SimulatedAnnealing:
     #         # decrement the temperature
     #         self.decrementRule()
 
-    def run(self,plot = True):
+    def run(self,plot = False):
         tables = self.solution
         init_score = (sum(t.score for t in tables))
         best_score = init_score
@@ -81,7 +81,7 @@ class SimulatedAnnealing:
                 current_score = (sum(t.score for t in tables)) + delta
                 scores.append(current_score / len(tables))
                 try:  # to avoid overflow
-                    p = math.exp(delta / self.curr_temp)
+                    p = math.exp(delta / (self.curr_temp*self.k))
                 except:
                     p = 2
                 if p > random.uniform(0, 1):
